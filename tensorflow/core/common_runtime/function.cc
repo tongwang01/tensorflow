@@ -44,7 +44,7 @@ static const char* const kRetOp = "_Retval";
 static const char* const kGradientOp = "SymbolicGradient";
 static const char* const kNodeLabel = "Func";
 static const char* const kFuncAttr = "f";
-static const char* const kNoinlineAttr = "noinline";
+static const char* const kNoInlineAttr = "_noinline";
 
 // Represents the index-th output of a node.
 struct Endpoint {
@@ -164,6 +164,9 @@ class FunctionLibraryRuntimeImpl : public FunctionLibraryRuntime {
 
   Device* device() override { return device_; }
   Env* env() override { return env_; }
+  int graph_def_version() override { return graph_def_version_; }
+
+  string DebugString(Handle h) override;
 
  private:
   typedef FunctionLibraryRuntimeImpl ME;
@@ -190,6 +193,7 @@ class FunctionLibraryRuntimeImpl : public FunctionLibraryRuntime {
   // The instantiated and transformed function is encoded as a Graph
   // object, and an executor is created for the graph.
   struct Item : public core::RefCounted {
+    const Graph* graph = nullptr;  // Owned by exec.
     Executor* exec = nullptr;
 
     ~Item() override { delete this->exec; }
@@ -247,6 +251,7 @@ class CallOp : public AsyncOpKernel {
                       done);
     FunctionLibraryRuntime::Options opts;
     opts.step_id = ctx->step_id();
+    opts.step_resource_manager = ctx->step_resource_manager();
     opts.runner = ctx->runner();
     std::vector<Tensor> args;
     args.reserve(ctx->num_inputs());
@@ -282,6 +287,34 @@ const FunctionBody* FunctionLibraryRuntimeImpl::GetFunctionBody(Handle h) {
   return func_graphs_[h];
 }
 
+namespace {
+
+struct CustomCreatorSingleton {
+  mutex mu;
+  CustomKernelCreator custom_creator = nullptr;
+
+  void Set(CustomKernelCreator cb) {
+    mutex_lock l(mu);
+    custom_creator = cb;
+  }
+
+  CustomKernelCreator Get() {
+    mutex_lock l(mu);
+    return custom_creator;
+  }
+};
+
+CustomCreatorSingleton* GetCustomCreatorSingleton() {
+  static CustomCreatorSingleton* ccs = new CustomCreatorSingleton;
+  return ccs;
+}
+
+}  // end namespace
+
+void RegisterCustomKernelCreator(CustomKernelCreator cb) {
+  GetCustomCreatorSingleton()->Set(cb);
+}
+
 Status FunctionLibraryRuntimeImpl::CreateKernel(const NodeDef& ndef,
                                                 OpKernel** kernel) {
   if (lib_def_->Find(ndef.op()) == nullptr) {
@@ -310,8 +343,23 @@ Status FunctionLibraryRuntimeImpl::CreateKernel(const NodeDef& ndef,
     output_memory_types.push_back(t == DT_INT32 ? HOST_MEMORY : DEVICE_MEMORY);
   }
 
-  // Constructs a CallOp kernel for running the instantiated function.
+  // If a custom kernel creator is given, try that.
+  CustomKernelCreator custom_creator = GetCustomCreatorSingleton()->Get();
   Status s;
+  if (custom_creator) {
+    std::unique_ptr<OpKernel> ret;
+    s = custom_creator(this, ndef, &ret);
+    if (s.ok()) {
+      *kernel = ret.release();
+      return s;
+    } else {
+      VLOG(2) << "Custom creator error: " << s;
+      // Falls through.
+      s = Status::OK();
+    }
+  }
+
+  // Constructs a CallOp kernel for running the instantiated function.
   auto device_type = DeviceType(device_->attributes().device_type());
   OpKernelConstruction construction(
       device_type, device_, device_->GetAllocator(AllocatorAttributes()), &ndef,
@@ -319,7 +367,7 @@ Status FunctionLibraryRuntimeImpl::CreateKernel(const NodeDef& ndef,
       fbody->ret_types, output_memory_types, graph_def_version_, &s);
   *kernel = new CallOp(handle, &construction);
   if (!s.ok()) {
-    delete kernel;
+    delete *kernel;
   }
   return s;
 }
@@ -356,6 +404,8 @@ Status FunctionLibraryRuntimeImpl::InstantiateSymbolicGradient(
                                      func.name());
     }
     FunctionDef grad_fdef;
+    // TODO(josh11b): Should filter out the attrs from func that aren't used
+    // by the gradient function.
     TF_RETURN_IF_ERROR(creator(AttrSlice(&func.attr()), &grad_fdef));
     TF_RETURN_IF_ERROR(FunctionDefToBody(grad_fdef, func.attr(), g_body));
   } else {
@@ -467,6 +517,7 @@ Status FunctionLibraryRuntimeImpl::CreateItem(Handle handle, Item** item) {
   TF_RETURN_IF_ERROR(NewLocalExecutor(params, g, &exec));
 
   *item = new Item;
+  (*item)->graph = g;
   (*item)->exec = exec;
   return Status::OK();
 }
@@ -525,6 +576,7 @@ void FunctionLibraryRuntimeImpl::Run(const Options& opts, Handle handle,
   Executor::Args exec_args;
   // Inherit the step_id from the caller.
   exec_args.step_id = opts.step_id;
+  exec_args.step_resource_manager = opts.step_resource_manager;
   exec_args.call_frame = frame;
   exec_args.cancellation_manager = opts.cancellation_manager;
   exec_args.runner = *opts.runner;
@@ -552,6 +604,16 @@ bool FunctionLibraryRuntimeImpl::IsStateful(const string& func) {
   const OpDef* op_def;
   const Status s = lib_def_->LookUpOpDef(func, &op_def);
   return s.ok() && op_def->is_stateful();
+}
+
+string FunctionLibraryRuntimeImpl::DebugString(Handle handle) {
+  Item* item = nullptr;
+  Status s = GetOrCreateItem(handle, &item);
+  if (s.ok()) {
+    return tensorflow::DebugString(item->graph);
+  } else {
+    return s.ToString();
+  }
 }
 
 FunctionLibraryRuntime* NewFunctionLibraryRuntime(
@@ -865,12 +927,12 @@ static void InlineFunctionBody(Graph* g, Node* caller,
 }
 
 // Given a node's NodeDef, returns false iff the node explicitly
-// specified noinline. This gives ExpandInlineFunctions a heuristic to
-// decide whether to inline the function.
+// specified _noinline. This gives ExpandInlineFunctions a heuristic
+// to decide whether to inline the function.
 bool ShouldInline(const NodeDef& ndef) {
   bool noinline = false;
-  if (GetNodeAttr(ndef, kNoinlineAttr, &noinline).ok()) {
-    // If the node specifies attribute 'noinlne', returns accordingly.
+  if (GetNodeAttr(ndef, kNoInlineAttr, &noinline).ok()) {
+    // If the node specifies attribute '_noinline', returns accordingly.
     return !noinline;
   }
   if (ndef.op() != kGradientOp) {
@@ -879,7 +941,7 @@ bool ShouldInline(const NodeDef& ndef) {
     return true;
   }
   // If the node is a SymbolicGradient, we use the forward
-  // function's attribute 'noinline' instead.
+  // function's attribute '_noinline' instead.
   const NameAttrList* forward_func_attrs;
   Status s =
       GetNodeAttr(AttrSlice(&ndef.attr()), kFuncAttr, &forward_func_attrs);
@@ -888,10 +950,10 @@ bool ShouldInline(const NodeDef& ndef) {
     // continue and the runtime will error out.
     return false;
   }
-  s = GetNodeAttr(AttrSlice(&forward_func_attrs->attr()), kNoinlineAttr,
+  s = GetNodeAttr(AttrSlice(&forward_func_attrs->attr()), kNoInlineAttr,
                   &noinline);
   if (!s.ok()) {
-    // The forward function doesn't specify 'noinline' attr, we should
+    // The forward function doesn't specify '_noinline' attr, we should
     // be free to decide.
     return true;
   }

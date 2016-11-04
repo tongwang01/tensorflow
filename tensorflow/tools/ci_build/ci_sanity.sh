@@ -91,7 +91,7 @@ do_pylint() {
   # Use this list to whitelist pylint errors
   ERROR_WHITELIST="^tensorflow/python/framework/function_test\.py.*\[E1123.*noinline "\
 "^tensorflow/python/platform/default/_gfile\.py.*\[E0301.*non-iterator "\
-"^tensorflow/python/platform/default/_googletest\.py.*\[E0102.*function already defined "\
+"^tensorflow/python/platform/default/_googletest\.py.*\[E0102.*function\salready\sdefined "\
 "^tensorflow/python/platform/gfile\.py.*\[E0301.*non-iterator"
 
   echo "ERROR_WHITELIST=\"${ERROR_WHITELIST}\""
@@ -113,17 +113,20 @@ do_pylint() {
 
   if [[ "$2" == "--incremental" ]]; then
     PYTHON_SRC_FILES=$(get_py_files_to_check --incremental)
-    NUM_PYTHON_SRC_FILES=$(echo ${PYTHON_SRC_FILES} | wc -w)
 
-    echo "do_pylint will perform checks on only the ${NUM_PYTHON_SRC_FILES} "\
-"Python file(s) changed in the last non-merge git commit due to the "\
-"--incremental flag:"
-    echo "${PYTHON_SRC_FILES}"
-    echo ""
+    if [[ -z "${PYTHON_SRC_FILES}" ]]; then
+      echo "do_pylint will NOT run due to --incremental flag and due to the "\
+"absence of Python code changes in the last commit."
+      return 0
+    else
+      # For incremental builds, we still check all Python files in cases there
+      # are function signature changes that affect unchanged Python files.
+      PYTHON_SRC_FILES=$(get_py_files_to_check)
+    fi
   elif [[ -z "$2" ]]; then
     PYTHON_SRC_FILES=$(get_py_files_to_check)
   else
-    echo "Invalid syntax when invoking do_pylint"
+    echo "Invalid syntax for invoking do_pylint"
     echo "Usage: do_pylint (PYTHON2 | PYTHON3) [--incremental]"
     return 1
   fi
@@ -164,7 +167,7 @@ do_pylint() {
   echo "pylint took $((${PYLINT_END_TIME} - ${PYLINT_START_TIME})) s"
   echo ""
 
-  grep '\[E' ${OUTPUT_FILE} > ${ERRORS_FILE}
+  grep -E '(\[E|\[W0311|\[W0312)' ${OUTPUT_FILE} > ${ERRORS_FILE}
 
   N_ERRORS=0
   while read LINE; do

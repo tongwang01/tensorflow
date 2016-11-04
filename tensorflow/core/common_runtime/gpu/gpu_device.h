@@ -41,7 +41,7 @@ namespace tensorflow {
 class BaseGPUDevice : public LocalDevice {
  public:
   BaseGPUDevice(const SessionOptions& options, const string& name,
-                Bytes memory_limit, BusAdjacency bus_adjacency, int gpu_id,
+                Bytes memory_limit, const DeviceLocality& locality, int gpu_id,
                 const string& physical_device_desc, Allocator* gpu_allocator,
                 Allocator* cpu_allocator, bool sync_every_op,
                 int32 max_streams);
@@ -118,12 +118,22 @@ class BaseGPUDeviceFactory : public DeviceFactory {
 
   virtual BaseGPUDevice* CreateGPUDevice(const SessionOptions& options,
                                          const string& name, Bytes memory_limit,
-                                         BusAdjacency bus_adjacency, int gpu_id,
+                                         const DeviceLocality& locality,
+                                         int gpu_id,
                                          const string& physical_device_desc,
                                          Allocator* gpu_allocator,
                                          Allocator* cpu_allocator) = 0;
 
-  void GetValidDeviceIds(std::vector<int>* ids);
+  // Returns into 'ids' the list of valid GPU ids, in the order that
+  // they should map to logical gpu ids "/gpu:0", "/gpu:1", etc, based
+  // upon 'visible_device_list', a comma-separated list of 'visible
+  // gpu ids'.
+  Status GetValidDeviceIds(const string& visible_device_list,
+                           std::vector<int>* ids);
+
+  // visible_gpu_initialized_[gpu_id] is true if visible GPU gpu_id
+  // has been initialized by the process.
+  std::unordered_map<int, bool> visible_gpu_initialized_;
 };
 
 }  // namespace tensorflow

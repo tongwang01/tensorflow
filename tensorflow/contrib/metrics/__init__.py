@@ -95,11 +95,6 @@ Certain metrics, such as streaming_mean or streaming_accuracy, can be weighted
 via a `weights` argument. The `weights` tensor must be the same size as the
 labels and predictions tensors and results in a weighted average of the metric.
 
-Other metrics, such as streaming_recall, streaming_precision, and streaming_auc,
-are not well defined with regard to weighted samples. However, a binary
-`ignore_mask` argument can be used to ignore certain values at graph executation
-time.
-
 ## Metric `Ops`
 
 @@streaming_accuracy
@@ -113,10 +108,18 @@ time.
 @@streaming_mean_relative_error
 @@streaming_mean_squared_error
 @@streaming_root_mean_squared_error
+@@streaming_covariance
+@@streaming_pearson_correlation
 @@streaming_mean_cosine_distance
 @@streaming_percentage_less
+@@streaming_sensitivity_at_specificity
+@@streaming_sparse_average_precision_at_k
 @@streaming_sparse_precision_at_k
+@@streaming_sparse_precision_at_top_k
 @@streaming_sparse_recall_at_k
+@@streaming_specificity_at_sensitivity
+@@streaming_concat
+
 @@auc_using_histogram
 
 @@accuracy
@@ -145,6 +148,8 @@ from tensorflow.contrib.metrics.python.ops.metric_ops import aggregate_metric_ma
 from tensorflow.contrib.metrics.python.ops.metric_ops import aggregate_metrics
 from tensorflow.contrib.metrics.python.ops.metric_ops import streaming_accuracy
 from tensorflow.contrib.metrics.python.ops.metric_ops import streaming_auc
+from tensorflow.contrib.metrics.python.ops.metric_ops import streaming_concat
+from tensorflow.contrib.metrics.python.ops.metric_ops import streaming_covariance
 from tensorflow.contrib.metrics.python.ops.metric_ops import streaming_mean
 from tensorflow.contrib.metrics.python.ops.metric_ops import streaming_mean_absolute_error
 from tensorflow.contrib.metrics.python.ops.metric_ops import streaming_mean_cosine_distance
@@ -152,6 +157,7 @@ from tensorflow.contrib.metrics.python.ops.metric_ops import streaming_mean_iou
 from tensorflow.contrib.metrics.python.ops.metric_ops import streaming_mean_relative_error
 from tensorflow.contrib.metrics.python.ops.metric_ops import streaming_mean_squared_error
 from tensorflow.contrib.metrics.python.ops.metric_ops import streaming_mean_tensor
+from tensorflow.contrib.metrics.python.ops.metric_ops import streaming_pearson_correlation
 from tensorflow.contrib.metrics.python.ops.metric_ops import streaming_percentage_less
 from tensorflow.contrib.metrics.python.ops.metric_ops import streaming_precision
 from tensorflow.contrib.metrics.python.ops.metric_ops import streaming_precision_at_thresholds
@@ -159,8 +165,12 @@ from tensorflow.contrib.metrics.python.ops.metric_ops import streaming_recall
 from tensorflow.contrib.metrics.python.ops.metric_ops import streaming_recall_at_k
 from tensorflow.contrib.metrics.python.ops.metric_ops import streaming_recall_at_thresholds
 from tensorflow.contrib.metrics.python.ops.metric_ops import streaming_root_mean_squared_error
+from tensorflow.contrib.metrics.python.ops.metric_ops import streaming_sensitivity_at_specificity
+from tensorflow.contrib.metrics.python.ops.metric_ops import streaming_sparse_average_precision_at_k
 from tensorflow.contrib.metrics.python.ops.metric_ops import streaming_sparse_precision_at_k
+from tensorflow.contrib.metrics.python.ops.metric_ops import streaming_sparse_precision_at_top_k
 from tensorflow.contrib.metrics.python.ops.metric_ops import streaming_sparse_recall_at_k
+from tensorflow.contrib.metrics.python.ops.metric_ops import streaming_specificity_at_sensitivity
 from tensorflow.contrib.metrics.python.ops.set_ops import set_difference
 from tensorflow.contrib.metrics.python.ops.set_ops import set_intersection
 from tensorflow.contrib.metrics.python.ops.set_ops import set_size

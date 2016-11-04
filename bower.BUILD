@@ -143,6 +143,24 @@ filegroup(
 )
 
 filegroup(
+    name = "iron_icons",
+    srcs = [
+        "av-icons.html",
+        "communication-icons.html",
+        "device-icons.html",
+        "editor-icons.html",
+        "hardware-icons.html",
+        "image-icons.html",
+        "index.html",
+        "iron-icons.html",
+        "maps-icons.html",
+        "notification-icons.html",
+        "places-icons.html",
+        "social-icons.html",
+    ],
+)
+
+filegroup(
     name = "iron_iconset_svg",
     srcs = [
         "index.html",
@@ -191,6 +209,7 @@ filegroup(
     name = "iron_overlay_behavior",
     srcs = [
         "index.html",
+        "iron-focusables-helper.html",
         "iron-overlay-backdrop.html",
         "iron-overlay-behavior.html",
         "iron-overlay-manager.html",
@@ -211,6 +230,14 @@ filegroup(
         "demo/src/x-app.html",
         "index.html",
         "iron-resizable-behavior.html",
+    ],
+)
+
+filegroup(
+    name = "iron_scroll_target_behavior",
+    srcs = [
+        "index.html",
+        "iron-scroll-target-behavior.html",
     ],
 )
 
@@ -401,6 +428,14 @@ filegroup(
         "paper-item-behavior.html",
         "paper-item-body.html",
         "paper-item-shared-styles.html",
+    ],
+)
+
+filegroup(
+    name = "paper_listbox",
+    srcs = [
+        "index.html",
+        "paper-listbox.html",
     ],
 )
 

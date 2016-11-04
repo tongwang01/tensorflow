@@ -19,9 +19,9 @@ limitations under the License.
 
 namespace tensorflow {
 
-using shape_inference::Dimension;
+using shape_inference::DimensionHandle;
 using shape_inference::InferenceContext;
-using shape_inference::Shape;
+using shape_inference::ShapeHandle;
 
 REGISTER_OP("StringToHashBucketFast")
     .Input("input: string")
@@ -61,7 +61,7 @@ additional components. Adversaries could try to make their inputs hash to the
 same bucket for a denial-of-service attack or to skew the results. A strong
 hash prevents this by making it dificult, if not infeasible, to compute inputs
 that hash to the same bucket. This comes at a cost of roughly 4x higher compute
-time than tf.string_to_hash_bucket_fast.
+time than `tf.string_to_hash_bucket_fast`.
 
 input: The strings to assign a hash bucket.
 num_buckets: The number of buckets.
@@ -95,7 +95,7 @@ REGISTER_OP("ReduceJoin")
     .Attr("keep_dims: bool = false")
     .Attr("separator: string = ''")
     .Output("output: string")
-    .SetShapeFn(shape_inference::ReductionShape)
+    .SetShapeFn(shape_inference::ReductionShapeForReduceJoin)
     .Doc(R"doc(
 Joins a string Tensor across the given dimensions.
 
@@ -180,7 +180,7 @@ REGISTER_OP("StringJoin")
       // Merge the non-scalars to find the output shape.
       // Don't merge inputs with unknown rank, as they can actually be scalars
       // or the output shape.
-      const Shape* out = c->UnknownShape();
+      ShapeHandle out = c->UnknownShape();
       for (int i = 0; i < c->num_inputs(); ++i) {
         if (c->RankKnown(c->input(i)) && c->Rank(c->input(i)) != 0) {
           TF_RETURN_IF_ERROR(c->Merge(out, c->input(i), &out));
@@ -206,14 +206,13 @@ REGISTER_OP("StringSplit")
     .Output("values: string")
     .Output("shape: int64")
     .SetShapeFn([](InferenceContext* c) {
-      const Shape* unsed_shape;
-      TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 2, &unsed_shape));
-      TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &unsed_shape));
+      ShapeHandle unused;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 1, &unused));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &unused));
 
-      c->set_output(0, c->Matrix(InferenceContext::kUnknownDim,
-                                 InferenceContext::kUnknownDim));
+      c->set_output(0, c->Matrix(InferenceContext::kUnknownDim, 2));
       c->set_output(1, c->Vector(InferenceContext::kUnknownDim));
-      c->set_output(2, c->Vector(InferenceContext::kUnknownDim));
+      c->set_output(2, c->Vector(2));
       return Status::OK();
     })
     .Doc(R"doc(
@@ -245,6 +244,40 @@ values: A vector of strings corresponding to the splited values.
 shape: a length-2 vector of int64 representing the shape of the sparse
   tensor, where the first value is N and the second value is the maximum number
   of tokens in a single input entry.
+)doc");
+
+REGISTER_OP("EncodeBase64")
+    .Input("input: string")
+    .Output("output: string")
+    .Attr("pad: bool = false")
+    .SetShapeFn(shape_inference::UnchangedShape)
+    .Doc(R"doc(
+Encode strings into web-safe base64 format.
+
+Refer to the following article for more information on base64 format:
+en.wikipedia.org/wiki/Base64. Base64 strings may have padding with '=' at the
+end so that the encoded has length multiple of 4. See Padding section of the
+link above.
+
+Web-safe means that the encoder uses - and _ instead of + and /.
+
+input: Strings to be encoded.
+output: Input strings encoded in base64.
+pad: Bool whether padding is applied at the ends.
+)doc");
+
+REGISTER_OP("DecodeBase64")
+    .Input("input: string")
+    .Output("output: string")
+    .SetShapeFn(shape_inference::UnchangedShape)
+    .Doc(R"doc(
+Decode web-safe base64-encoded strings.
+
+Input may or may not have padding at the end. See EncodeBase64 for padding.
+Web-safe means that input must use - and _ instead of + and /.
+
+input: Base64 strings to decode.
+output: Decoded strings.
 )doc");
 
 }  // namespace tensorflow

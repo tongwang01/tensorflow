@@ -28,7 +28,10 @@ filegroup(
             "core/ops/*.cc",
             "data/*.cc",
         ],
-        exclude = ["core/ops/*_test.cc"],
+        exclude = [
+            "core/ops/*_test.cc",
+            "data/*_test.cc",
+        ],
     ),
 )
 
@@ -39,6 +42,18 @@ filegroup(
             "core/ops/*.h",
         ],
     ),
+)
+
+cc_library(
+    name = "all_ops",
+    srcs = [":custom_op_sources"],
+    hdrs = [":custom_op_headers"],
+    deps = [
+        "//tensorflow/core:framework_headers_lib",
+        "//third_party/eigen3",
+        "@protobuf//:protobuf",
+    ],
+    alwayslink = 1,
 )
 
 py_library(
@@ -296,6 +311,20 @@ cc_test(
     ],
 )
 
+cc_test(
+    name = "sparse_values_to_indices_test",
+    size = "small",
+    srcs = ["data/sparse_values_to_indices_test.cc"],
+    deps = [
+        ":all_ops",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+        "//tensorflow/core/kernels:ops_testutil",
+    ],
+)
+
 py_library(
     name = "topn_py",
     srcs = ["python/topn.py"],
@@ -311,6 +340,7 @@ py_test(
     size = "small",
     srcs = ["python/topn_test.py"],
     srcs_version = "PY2AND3",
+    tags = ["manual"],
     deps = [
         ":topn_py",
         "//tensorflow:tensorflow_py",
